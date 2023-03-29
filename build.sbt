@@ -18,6 +18,7 @@ lazy val core = (project in file("modules/core"))
     libraryDependencies ++= Seq(
       "dev.zio"     %% "zio"             % zioVersion,
       "dev.zio"     %% "zio-test"        % zioVersion % Test,
+      "dev.zio" %% "zio-test-sbt" % zioVersion % Test,
       "dev.zio"     %% "zio-openai"      % zioOpenAiVersion,
       "dev.zio"     %% "zio-schema"      % zioSchemaVersion,
       "dev.zio"     %% "zio-schema-json" % zioSchemaVersion,
