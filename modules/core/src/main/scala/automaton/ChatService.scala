@@ -87,7 +87,8 @@ Your final message cannot contain any RPC calls. So if you want to send an RPC c
 
 example (these are just examples, the actual RPC you have access to are listed above):
 { "rpc": "getWeather", "args": ["New York"] }
-<receive response> { "rpc": "sendEmail", "args": ["myemail@gmail.com", "Hello!"] }
+<receive response>
+{ "rpc": "sendEmail", "args": ["myemail@gmail.com", "Hello!"] }
 <receive response>
 [Your final message in markdown format]
 """.trim
