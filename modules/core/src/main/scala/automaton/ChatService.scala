@@ -2,9 +2,10 @@ package automaton
 
 import zio.*
 import zio.http.ZClient
+import zio.http.model.Status
 import zio.json.*
 import zio.openai.Chat
-import zio.openai.model.{ChatCompletionRequestMessage, Role}
+import zio.openai.model.{ChatCompletionRequestMessage, OpenAIFailure, Role}
 import zio.schema.Schema
 
 // TODO:
@@ -29,7 +30,15 @@ final case class ChatService[Service](
     for
       _              <- ZIO.fail(new Exception("Max depth reached")).when(maxDepth <= 0)
       messages       <- messagesRef.get
-      response       <- chat.createChatCompletion("gpt-4", messages).mapError(e => new Error(e.toString))
+      response       <-
+        chat.createChatCompletion("gpt-4", messages)
+          .catchSome {
+            case OpenAIFailure.ErrorResponse(_, _, code, _) if code == Status.TooManyRequests =>
+              chat.createChatCompletion("gpt-3.5-turbo", messages)
+                .tapError(e => ZIO.debug("The smart AI is taking too long, so we're using the old AI instead."))
+                .mapError(e => new Error(e.toString))
+          }
+          .mapError(e => new Exception(e.toString))
       response       <- ZIO.from(response.choices.headOption.flatMap(_.message.toOption)).orElseFail(new Error("No response"))
       responseMessage = ChatCompletionRequestMessage(response.role, response.content)
 
@@ -56,7 +65,7 @@ object ChatService:
   def prompt[Service: Tag](message: String): ZIO[ChatService[Service], Throwable, Unit] =
     ZIO.serviceWithZIO(_.prompt(message))
 
-  inline def live[Service: Tag] =
+  inline def live[Service: Tag]: ZLayer[Service & zio.openai.Chat, Throwable, ChatService[Service]] =
     val handler = ActionMacro.run[Service]
     val instructions =
       s"""
@@ -82,6 +91,7 @@ example (these are just examples, the actual RPC you have access to are listed a
 [Your final message in markdown format]
 """.trim
 
-    ZClient.default >>> Chat.live >+>
+    // TODO Don't hardcode Chat.live here?
+    ZClient.default >+>
       ZLayer(Ref.make(NonEmptyChunk(ChatCompletionRequestMessage(Role.System, instructions)))) >>>
       ZLayer.fromFunction(ChatService.apply[Service](_, _, _, handler))
