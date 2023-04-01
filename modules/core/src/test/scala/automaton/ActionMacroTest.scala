@@ -43,6 +43,21 @@ object ActionMacroTest extends ZIOSpecDefault {
              """def successfulCall(): Int
                |def failedCall(): String""".stripMargin)
         },
+      ),
+      suite("quoted tests")(
+        test("simple"){
+          import scala.quoted.*
+          inline def getMethods = ${ActionMacro.getTraitMethods[SomeService]}
+
+          val res = getMethods
+          println("=====methods======")
+          pprint.pprintln(res)
+          println("=====methods======")
+
+          for
+            _ <- ZIO.unit
+          yield assertCompletes
+        }
       )
 
     )
