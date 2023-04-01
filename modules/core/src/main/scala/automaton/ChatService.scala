@@ -35,7 +35,9 @@ final case class ChatService[Service](
           .catchSome {
             case OpenAIFailure.ErrorResponse(_, _, code, _) if code == Status.TooManyRequests =>
               chat.createChatCompletion("gpt-3.5-turbo", messages)
-                .tapError(e => ZIO.debug("The smart AI is taking too long, so we're using the old AI instead."))
+                .tapError(e =>
+                  Log.systemLine("The smart AI is taking too long, so we're using the old AI instead. Results may be less accurate.")
+                )
                 .mapError(e => new Error(e.toString))
           }
           .mapError(e => new Exception(e.toString))
@@ -65,7 +67,7 @@ object ChatService:
   def prompt[Service: Tag](message: String): ZIO[ChatService[Service], Throwable, Unit] =
     ZIO.serviceWithZIO(_.prompt(message))
 
-  inline def live[Service: Tag]: ZLayer[Service & zio.openai.Chat, Throwable, ChatService[Service]] =
+  inline def live[Service: Tag]: ZLayer[Service, Throwable, ChatService[Service]] =
     val handler = ActionMacro.run[Service]
     val instructions =
       s"""
@@ -85,13 +87,19 @@ Your final message cannot contain any RPC calls. So if you want to send an RPC c
 
 example (these are just examples, the actual RPC you have access to are listed above):
 { "rpc": "getWeather", "args": ["New York"] }
-<receive response>
-{ "rpc": "sendEmail", "args": ["myemail@gmail.com", "Hello!"] }
+<receive response> { "rpc": "sendEmail", "args": ["myemail@gmail.com", "Hello!"] }
 <receive response>
 [Your final message in markdown format]
 """.trim
 
-    // TODO Don't hardcode Chat.live here?
+    ZClient.default >>> Chat.live >+>
+    ZLayer(Ref.make(NonEmptyChunk(ChatCompletionRequestMessage(Role.System, instructions)))) >>>
+      ZLayer.fromFunction(ChatService.apply[Service](_, _, _, handler))
+
+  private[automaton] inline def test[Service: Tag]: ZLayer[Service & zio.openai.Chat, Throwable, ChatService[Service]] =
+    val handler = ActionMacro.run[Service]
+    val instructions = "Work for me!"
+
     ZClient.default >+>
-      ZLayer(Ref.make(NonEmptyChunk(ChatCompletionRequestMessage(Role.System, instructions)))) >>>
+    ZLayer(Ref.make(NonEmptyChunk(ChatCompletionRequestMessage(Role.System, instructions)))) >>>
       ZLayer.fromFunction(ChatService.apply[Service](_, _, _, handler))
